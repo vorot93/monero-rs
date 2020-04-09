@@ -24,19 +24,21 @@
 //! is following.
 //!
 
+use crate::{
+    blockdata::transaction,
+    util::{key, ringct},
+};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use hex::encode as hex_encode;
-use std::fmt;
-use std::io;
-use std::io::{Cursor, Read, Write};
-use std::ops::Deref;
-use std::u32;
-
-use crate::blockdata::transaction;
-use crate::util::{key, ringct};
-
 #[cfg(feature = "serde_support")]
 use serde::{Deserialize, Serialize};
+use std::{
+    convert::TryFrom,
+    fmt, io,
+    io::{Cursor, Read, Write},
+    ops::Deref,
+    u32,
+};
 
 /// Encoding error
 #[derive(Debug)]
@@ -57,22 +59,22 @@ pub enum Error {
 
 #[doc(hidden)]
 impl From<key::Error> for Error {
-    fn from(e: key::Error) -> Error {
-        Error::Key(e)
+    fn from(e: key::Error) -> Self {
+        Self::Key(e)
     }
 }
 
 #[doc(hidden)]
 impl From<transaction::Error> for Error {
-    fn from(e: transaction::Error) -> Error {
-        Error::Transaction(e)
+    fn from(e: transaction::Error) -> Self {
+        Self::Transaction(e)
     }
 }
 
 #[doc(hidden)]
 impl From<ringct::Error> for Error {
-    fn from(e: ringct::Error) -> Error {
-        Error::RingCT(e)
+    fn from(e: ringct::Error) -> Self {
+        Self::RingCT(e)
     }
 }
 
@@ -120,7 +122,8 @@ where
 {
     let mut decoder = Cursor::new(data);
     let rv = Decodable::consensus_decode(&mut decoder)?;
-    let consumed = decoder.position() as usize;
+    let consumed =
+        usize::try_from(decoder.position()).map_err(|_| Error::ParseFailed("usize overflow"))?;
 
     Ok((rv, consumed))
 }
@@ -307,10 +310,11 @@ impl<S: Encoder> Encodable<S> for VarInt {
         let mut res: Vec<u8> = vec![];
         let mut n = self.0;
         loop {
-            let bits = (n & 0b0111_1111) as u8;
+            let bits = u8::try_from(n & 0b0111_1111)
+                .map_err(|_| self::Error::ParseFailed("u8 overflow"))?;
             n >>= 7;
             res.push(bits);
-            if n == 0u64 {
+            if n == 0_u64 {
                 break;
             }
         }
@@ -330,7 +334,7 @@ impl<S: Encoder> Encodable<S> for VarInt {
 
 impl<D: Decoder> Decodable<D> for VarInt {
     #[inline]
-    fn consensus_decode(d: &mut D) -> Result<VarInt, self::Error> {
+    fn consensus_decode(d: &mut D) -> Result<Self, self::Error> {
         let mut res: Vec<u8> = vec![];
         loop {
             let n = d.read_u8()?;
@@ -339,15 +343,15 @@ impl<D: Decoder> Decodable<D> for VarInt {
                 break;
             }
         }
-        let mut int = 0u64;
+        let mut int = 0_u64;
         res.reverse();
         let (last, arr) = res.split_last().unwrap();
         arr.iter().for_each(|bits| {
-            int |= *bits as u64;
+            int |= u64::from(*bits);
             int <<= 7;
         });
-        int |= *last as u64;
-        Ok(VarInt(int))
+        int |= u64::from(*last);
+        Ok(Self(int))
     }
 }
 
@@ -361,7 +365,7 @@ impl<S: Encoder> Encodable<S> for bool {
 
 impl<D: Decoder> Decodable<D> for bool {
     #[inline]
-    fn consensus_decode(d: &mut D) -> Result<bool, self::Error> {
+    fn consensus_decode(d: &mut D) -> Result<Self, self::Error> {
         d.read_u8().map(|n| n != 0)
     }
 }
@@ -376,8 +380,8 @@ impl<S: Encoder> Encodable<S> for String {
 
 impl<D: Decoder> Decodable<D> for String {
     #[inline]
-    fn consensus_decode(d: &mut D) -> Result<String, self::Error> {
-        String::from_utf8(Decodable::consensus_decode(d)?)
+    fn consensus_decode(d: &mut D) -> Result<Self, self::Error> {
+        Self::from_utf8(Decodable::consensus_decode(d)?)
             .map_err(|_| self::Error::ParseFailed("String was not valid UTF8"))
     }
 }
@@ -437,9 +441,11 @@ impl<S: Encoder, T: Encodable<S>> Encodable<S> for Vec<T> {
 
 impl<D: Decoder, T: Decodable<D>> Decodable<D> for Vec<T> {
     #[inline]
-    fn consensus_decode(d: &mut D) -> Result<Vec<T>, self::Error> {
+    fn consensus_decode(d: &mut D) -> Result<Self, self::Error> {
         let len = VarInt::consensus_decode(d)?.0;
-        let mut ret = Vec::with_capacity(len as usize);
+        let mut ret = Self::with_capacity(
+            usize::try_from(len).map_err(|_| self::Error::ParseFailed("usize overflow"))?,
+        );
         for _ in 0..len {
             ret.push(Decodable::consensus_decode(d)?);
         }
@@ -474,9 +480,9 @@ impl<S: Encoder, T: Encodable<S>> Encodable<S> for Box<[T]> {
 
 impl<D: Decoder, T: Decodable<D>> Decodable<D> for Box<[T]> {
     #[inline]
-    fn consensus_decode(d: &mut D) -> Result<Box<[T]>, self::Error> {
-        let len = VarInt::consensus_decode(d)?.0;
-        let len = len as usize;
+    fn consensus_decode(d: &mut D) -> Result<Self, self::Error> {
+        let len = usize::try_from(VarInt::consensus_decode(d)?.0)
+            .map_err(|_| Error::ParseFailed("usize overflow"))?;
         let mut ret = Vec::with_capacity(len);
         for _ in 0..len {
             ret.push(Decodable::consensus_decode(d)?);
@@ -487,8 +493,7 @@ impl<D: Decoder, T: Decodable<D>> Decodable<D> for Box<[T]> {
 
 #[cfg(test)]
 mod tests {
-    use super::VarInt;
-    use super::{deserialize, serialize};
+    use super::{deserialize, serialize, VarInt};
 
     #[test]
     fn deserialize_varint() {
@@ -503,6 +508,6 @@ mod tests {
     fn serialize_varint() {
         assert_eq!(vec![0b000_0001], serialize(&VarInt(1)));
         assert_eq!(vec![0b1010_1100, 0b0000_0010], serialize(&VarInt(300)));
-        assert_eq!("80e497d012", hex::encode(serialize(&VarInt(5000000000))));
+        assert_eq!("80e497d012", hex::encode(serialize(&VarInt(5_000_000_000))));
     }
 }

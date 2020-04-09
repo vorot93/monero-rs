@@ -41,6 +41,14 @@
 #![deny(non_camel_case_types)]
 #![deny(unused_mut)]
 #![deny(missing_docs)]
+#![warn(clippy::all, clippy::pedantic, clippy::nursery)]
+#![allow(
+    clippy::cognitive_complexity,
+    clippy::if_not_else,
+    clippy::missing_errors_doc,
+    clippy::module_name_repetitions,
+    clippy::non_ascii_literal
+)]
 
 #[macro_use]
 mod internal_macros;
@@ -51,10 +59,9 @@ pub mod cryptonote;
 pub mod network;
 pub mod util;
 
-pub use blockdata::transaction::OwnedTxOut;
-pub use blockdata::transaction::Transaction;
-pub use blockdata::transaction::TxOut;
+pub use blockdata::transaction::{OwnedTxOut, Transaction, TxOut};
 pub use network::Network;
-pub use util::address::Address;
-pub use util::key::PrivateKey;
-pub use util::key::PublicKey;
+pub use util::{
+    address::Address,
+    key::{PrivateKey, PublicKey},
+};

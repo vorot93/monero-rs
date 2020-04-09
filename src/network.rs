@@ -17,9 +17,8 @@
 //!
 //! This module defines the different Monero networks and their magic bytes.
 
-use std::{error, fmt};
-
 use crate::util::address::AddressType;
+use std::{error, fmt};
 
 /// Network error types
 #[derive(Debug, PartialEq, Eq)]
@@ -30,22 +29,20 @@ pub enum Error {
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            Error::InvalidMagicByte => f.write_str(error::Error::description(self)),
-        }
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::InvalidMagicByte => "invalid magic byte",
+            }
+        )
     }
 }
 
 impl error::Error for Error {
     fn cause(&self) -> Option<&dyn error::Error> {
-        match *self {
-            Error::InvalidMagicByte => None,
-        }
-    }
-
-    fn description(&self) -> &str {
-        match *self {
-            Error::InvalidMagicByte => "invalid magic byte",
+        match self {
+            Self::InvalidMagicByte => None,
         }
     }
 }
@@ -65,6 +62,7 @@ impl Network {
     /// Get the associated magic byte given an address type
     ///
     /// **Same as** [`monero/src/cryptonote_config.h`](https://github.com/monero-project/monero/blob/159c78758af0a0af9df9a4f9ab81888f9322e9be/src/cryptonote_config.h#L190-L239)
+    #[must_use]
     pub fn as_u8(self, addr_type: &AddressType) -> u8 {
         use AddressType::*;
         use Network::*;
@@ -90,7 +88,7 @@ impl Network {
     /// Recover the network type given an address magic byte
     ///
     /// **Same as** [`monero/src/cryptonote_config.h`](https://github.com/monero-project/monero/blob/159c78758af0a0af9df9a4f9ab81888f9322e9be/src/cryptonote_config.h#L190-L239)
-    pub fn from_u8(byte: u8) -> Result<Network, Error> {
+    pub fn from_u8(byte: u8) -> Result<Self, Error> {
         use Network::*;
         match byte {
             18 | 19 | 42 => Ok(Mainnet),
@@ -102,7 +100,7 @@ impl Network {
 }
 
 impl Default for Network {
-    fn default() -> Network {
-        Network::Mainnet
+    fn default() -> Self {
+        Self::Mainnet
     }
 }

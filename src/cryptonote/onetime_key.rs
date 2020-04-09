@@ -55,14 +55,15 @@
 //! ```
 //!
 
-use std::collections::HashMap;
-use std::io::Cursor;
-use std::ops::Range;
-
-use crate::consensus::encode::{Encodable, VarInt};
-use crate::cryptonote::hash;
-use crate::cryptonote::subaddress::{self, get_spend_secret_key, Index};
-use crate::util::key::{KeyPair, PrivateKey, PublicKey, ViewPair};
+use crate::{
+    consensus::encode::{Encodable, VarInt},
+    cryptonote::{
+        hash,
+        subaddress::{self, get_spend_secret_key, Index},
+    },
+    util::key::{KeyPair, PrivateKey, PublicKey, ViewPair},
+};
+use std::{collections::HashMap, io::Cursor, ops::Range};
 
 /// Special factor used in all `vR` and `rV` multiplications
 pub const MONERO_MUL_FACTOR: u8 = 8;
@@ -79,24 +80,27 @@ pub struct KeyGenerator {
 impl KeyGenerator {
     /// Construct a One-time key generator from public keys and secret random, this is used to
     /// generate One-time keys for output indexes from an address when sending funds
+    #[must_use]
     pub fn from_random(view: PublicKey, spend: PublicKey, random: PrivateKey) -> Self {
         // Computes r*8*V
         let rv = random * MONERO_MUL_FACTOR * &view;
-        KeyGenerator { spend, rv }
+        Self { spend, rv }
     }
 
     /// Construct a One-time key generator from private keys and public random (tx pubkey), this
     /// is used to scan if some outputs contains One-time keys owned by the view pair
+    #[must_use]
     pub fn from_key(keys: &ViewPair, random: PublicKey) -> Self {
         // Computes v*8*R
         let rv = keys.view * MONERO_MUL_FACTOR * &random;
-        KeyGenerator {
+        Self {
             spend: keys.spend,
             rv,
         }
     }
 
     /// Compute the One-time public key `P = Hn(r*8*V || n)*G + S` for the indexed output `n`
+    #[must_use]
     pub fn one_time_key(&self, index: usize) -> PublicKey {
         // Computes a one-time public key P = Hn(r*8*V || n)*G + S
         PublicKey::from_private_key(&self.get_rvn_scalar(index)) + self.spend
@@ -104,11 +108,13 @@ impl KeyGenerator {
 
     /// Check if key `P` is equal to indexed key `P'`, if true the output is own by the address,
     /// used when scanning transaction outputs, if true the One-time key is related to the keys
+    #[must_use]
     pub fn check(&self, index: usize, key: PublicKey) -> bool {
         key == self.one_time_key(index)
     }
 
     /// Computes `Hn(v*8*R || n)` and interpret it as a scalar
+    #[must_use]
     pub fn get_rvn_scalar(&self, index: usize) -> PrivateKey {
         // Serializes (v*8*R || n)
         let mut encoder = Cursor::new(vec![]);
@@ -138,6 +144,7 @@ pub struct SubKeyChecker<'a> {
 impl<'a> SubKeyChecker<'a> {
     /// Generate the table of sub spend keys `K(S) \in major x minor` from a view pair mapped to
     /// their Sub-address indexes
+    #[must_use]
     pub fn new(keys: &'a ViewPair, major: Range<u32>, minor: Range<u32>) -> Self {
         let mut table = HashMap::new();
         major.for_each(|maj| {
@@ -156,6 +163,7 @@ impl<'a> SubKeyChecker<'a> {
     /// Check if an output public key with its associated random tx public key at index `i` is in
     /// the table, if found then the output is own by the view pair, otherwise the output might be
     /// own by someone else, or the table migth be too small.
+    #[must_use]
     pub fn check(&self, index: usize, key: &PublicKey, tx_pubkey: &PublicKey) -> Option<&Index> {
         let keygen = KeyGenerator::from_key(self.keys, *tx_pubkey);
         // D' = P - Hs(v*8*R || n)*G
@@ -176,6 +184,7 @@ pub struct KeyRecoverer<'a> {
 impl<'a> KeyRecoverer<'a> {
     /// Construct a One-time key generator from private keys, this is used when scanning
     /// transaction outputs to recover private One-time keys
+    #[must_use]
     pub fn new(keys: &'a KeyPair, tx_pubkey: PublicKey) -> Self {
         let viewpair = keys.into();
         let checker = KeyGenerator::from_key(&viewpair, tx_pubkey);
@@ -191,12 +200,13 @@ impl<'a> KeyRecoverer<'a> {
     /// ```
     ///
     /// See sub-address key derivation for more details on address index handling.
-    pub fn recover(&self, oindex: usize, aindex: Index) -> PrivateKey {
+    #[must_use]
+    pub fn recover(&self, o_index: usize, a_index: Index) -> PrivateKey {
         // Hn(v*8*R || n)
-        let scal = self.checker.get_rvn_scalar(oindex);
+        let scal = self.checker.get_rvn_scalar(o_index);
         // s' = { s                   i == 0
         //      { s + Hn(v || i)      otherwise
-        let s = get_spend_secret_key(self.keys, aindex);
+        let s = get_spend_secret_key(self.keys, a_index);
         // Hn(v*8*R || n) + s'
         scal + s
     }
@@ -204,11 +214,12 @@ impl<'a> KeyRecoverer<'a> {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
     use super::{KeyGenerator, KeyRecoverer, SubKeyChecker};
-    use crate::cryptonote::subaddress::Index;
-    use crate::util::key::{KeyPair, PrivateKey, PublicKey, ViewPair};
+    use crate::{
+        cryptonote::subaddress::Index,
+        util::key::{KeyPair, PrivateKey, PublicKey, ViewPair},
+    };
+    use std::str::FromStr;
 
     #[test]
     fn one_time_key_generator() {

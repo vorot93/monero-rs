@@ -25,15 +25,14 @@ serde_support = ["serde", "serde-big-array"]
 [dependencies]
 hex = "0.4"
 byteorder = "1"
-keccak-hash = "0.3"
-base58-monero = "0.1"
+keccak-hash = "0.5"
+base58-monero = "0.2"
 serde = { version = "1.0", features = ["derive"], optional = true }
-serde-big-array = {version ="0.2.0", optional = true}
-curve25519-dalek= {version ="2.0", features = ["serde"]}
+serde-big-array = {version = "0.2.0", optional = true}
+curve25519-dalek= {version = "2.0", features = ["serde"]}
 
 [dependencies.fixed-hash]
-version = "0.3"
-features = ["libc"]
+version = "0.6"
 default-features = false
 
 [badges]

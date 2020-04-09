@@ -59,26 +59,30 @@
 //! ```
 //!
 
-use std::hash::{Hash, Hasher};
-use std::ops::{Add, Mul, Sub};
-use std::str::FromStr;
-use std::{error, fmt, ops};
-
-use curve25519_dalek::constants::ED25519_BASEPOINT_TABLE;
-use curve25519_dalek::edwards::{CompressedEdwardsY, EdwardsPoint};
-use curve25519_dalek::scalar::Scalar;
-
-use crate::consensus::encode::{self, Decodable, Decoder, Encodable, Encoder};
-use crate::cryptonote::hash;
-
+use crate::{
+    consensus::encode::{self, Decodable, Decoder, Encodable, Encoder},
+    cryptonote::hash,
+};
+use curve25519_dalek::{
+    constants::ED25519_BASEPOINT_TABLE,
+    edwards::{CompressedEdwardsY, EdwardsPoint},
+    scalar::Scalar,
+};
 #[cfg(feature = "serde_support")]
 use serde::{Deserialize, Serialize};
+use std::{
+    error, fmt,
+    hash::{Hash, Hasher},
+    ops,
+    ops::{Add, Mul, Sub},
+    str::FromStr,
+};
 
 /// Errors that might occur during key decoding
 #[derive(Debug, PartialEq)]
 pub enum Error {
-    /// Invalid input lenght
-    InvalidLenght,
+    /// Invalid input length
+    InvalidLength,
     /// Not a canonical representation of an ed25519 scalar
     NotCanonicalScalar,
     /// Invalid point on the curve
@@ -89,37 +93,32 @@ pub enum Error {
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            Error::Hex(ref e) => fmt::Display::fmt(e, f),
-            Error::InvalidLenght | Error::NotCanonicalScalar | Error::InvalidPoint => {
-                f.write_str(error::Error::description(self))
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Hex(e) => return fmt::Display::fmt(e, f),
+                Self::InvalidLength => "invalid length",
+                Self::NotCanonicalScalar => "not a canonical scalar",
+                Self::InvalidPoint => "invalid point",
             }
-        }
+        )
     }
 }
 
 impl error::Error for Error {
-    fn cause(&self) -> Option<&dyn error::Error> {
-        match *self {
-            Error::Hex(ref e) => Some(e),
-            Error::InvalidLenght | Error::NotCanonicalScalar | Error::InvalidPoint => None,
-        }
-    }
-
-    fn description(&self) -> &str {
-        match *self {
-            Error::Hex(ref e) => e.description(),
-            Error::InvalidLenght => "invalid lenght",
-            Error::NotCanonicalScalar => "not a canonical scalar",
-            Error::InvalidPoint => "invalid point",
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            Self::Hex(e) => Some(e),
+            Self::InvalidLength | Self::NotCanonicalScalar | Self::InvalidPoint => None,
         }
     }
 }
 
 #[doc(hidden)]
 impl From<hex::FromHexError> for Error {
-    fn from(e: hex::FromHexError) -> Error {
-        Error::Hex(e)
+    fn from(e: hex::FromHexError) -> Self {
+        Self::Hex(e)
     }
 }
 
@@ -132,34 +131,32 @@ pub struct PrivateKey {
 
 impl PrivateKey {
     /// Serialize a public key as bytes
+    #[must_use]
     pub fn as_bytes(&self) -> &[u8] {
         self.scalar.as_bytes()
     }
 
     /// Serialize a public key to bytes
+    #[must_use]
     pub fn to_bytes(&self) -> [u8; 32] {
         self.scalar.to_bytes()
     }
 
     /// Deserialize a private key from a slice
-    pub fn from_slice(data: &[u8]) -> Result<PrivateKey, Error> {
+    pub fn from_slice(data: &[u8]) -> Result<Self, Error> {
         if data.len() != 32 {
-            return Err(Error::InvalidLenght);
+            return Err(Error::InvalidLength);
         }
-        let mut bytes = [0u8; 32];
+        let mut bytes = [0_u8; 32];
         bytes.copy_from_slice(data);
-        let scalar = match Scalar::from_canonical_bytes(bytes) {
-            Some(scalar) => scalar,
-            None => {
-                return Err(Error::NotCanonicalScalar);
-            }
-        };
-        Ok(PrivateKey { scalar })
+        let scalar = Scalar::from_canonical_bytes(bytes).ok_or(Error::NotCanonicalScalar)?;
+        Ok(Self { scalar })
     }
 
     /// Create a secret key from a raw curve25519 scalar
-    pub fn from_scalar(scalar: Scalar) -> PrivateKey {
-        PrivateKey { scalar }
+    #[must_use]
+    pub const fn from_scalar(scalar: Scalar) -> Self {
+        Self { scalar }
     }
 }
 
@@ -182,39 +179,39 @@ impl<'a> Add<PrivateKey> for &'a PrivateKey {
 }
 
 impl<'b> Add<&'b PrivateKey> for PrivateKey {
-    type Output = PrivateKey;
+    type Output = Self;
 
-    fn add(self, other: &'b PrivateKey) -> Self::Output {
+    fn add(self, other: &'b Self) -> Self::Output {
         let scalar = self.scalar + other.scalar;
-        PrivateKey { scalar }
+        Self { scalar }
     }
 }
 
 impl Add<PrivateKey> for PrivateKey {
-    type Output = PrivateKey;
+    type Output = Self;
 
-    fn add(self, other: PrivateKey) -> Self::Output {
+    fn add(self, other: Self) -> Self::Output {
         let scalar = self.scalar + other.scalar;
-        PrivateKey { scalar }
+        Self { scalar }
     }
 }
 
 impl Mul<u8> for PrivateKey {
-    type Output = PrivateKey;
+    type Output = Self;
 
     fn mul(self, other: u8) -> Self::Output {
         let other: Scalar = other.into();
-        PrivateKey {
+        Self {
             scalar: self.scalar * other,
         }
     }
 }
 
 impl Mul<PrivateKey> for PrivateKey {
-    type Output = PrivateKey;
+    type Output = Self;
 
-    fn mul(self, other: PrivateKey) -> Self::Output {
-        PrivateKey {
+    fn mul(self, other: Self) -> Self::Output {
+        Self {
             scalar: self.scalar * other.scalar,
         }
     }
@@ -264,9 +261,9 @@ impl ops::Index<ops::RangeFull> for PrivateKey {
 }
 
 impl<D: Decoder> Decodable<D> for PrivateKey {
-    fn consensus_decode(d: &mut D) -> Result<PrivateKey, encode::Error> {
+    fn consensus_decode(d: &mut D) -> Result<Self, encode::Error> {
         let bytes: [u8; 32] = Decodable::consensus_decode(d)?;
-        Ok(PrivateKey::from_slice(&bytes)?)
+        Ok(Self::from_slice(&bytes)?)
     }
 }
 
@@ -286,34 +283,32 @@ pub struct PublicKey {
 
 impl PublicKey {
     /// Serialize a public key as bytes
+    #[must_use]
     pub fn as_bytes(&self) -> &[u8] {
         self.point.as_bytes()
     }
 
     /// Serialize a public key to bytes
+    #[must_use]
     pub fn to_bytes(&self) -> [u8; 32] {
         self.point.to_bytes()
     }
 
     /// Deserialize a public key from a slice
-    pub fn from_slice(data: &[u8]) -> Result<PublicKey, Error> {
+    pub fn from_slice(data: &[u8]) -> Result<Self, Error> {
         if data.len() != 32 {
-            return Err(Error::InvalidLenght);
+            return Err(Error::InvalidLength);
         }
         let point = CompressedEdwardsY::from_slice(data);
-        match point.decompress() {
-            Some(_) => (),
-            None => {
-                return Err(Error::InvalidPoint);
-            }
-        };
-        Ok(PublicKey { point })
+        point.decompress().ok_or(Error::InvalidPoint)?;
+        Ok(Self { point })
     }
 
     /// Generate a public key from the private key
-    pub fn from_private_key(privkey: &PrivateKey) -> PublicKey {
+    #[must_use]
+    pub fn from_private_key(privkey: &PrivateKey) -> Self {
         let point = &privkey.scalar * &ED25519_BASEPOINT_TABLE;
-        PublicKey {
+        Self {
             point: point.compress(),
         }
     }
@@ -349,22 +344,22 @@ impl<'a> Add<PublicKey> for &'a PublicKey {
 }
 
 impl<'b> Add<&'b PublicKey> for PublicKey {
-    type Output = PublicKey;
+    type Output = Self;
 
-    fn add(self, other: &'b PublicKey) -> Self::Output {
+    fn add(self, other: &'b Self) -> Self::Output {
         let point = self.point() + other.point();
-        PublicKey {
+        Self {
             point: point.compress(),
         }
     }
 }
 
 impl Add<PublicKey> for PublicKey {
-    type Output = PublicKey;
+    type Output = Self;
 
-    fn add(self, other: PublicKey) -> Self::Output {
+    fn add(self, other: Self) -> Self::Output {
         let point = self.point() + other.point();
-        PublicKey {
+        Self {
             point: point.compress(),
         }
     }
@@ -393,33 +388,33 @@ impl<'a> Sub<PublicKey> for &'a PublicKey {
 }
 
 impl<'b> Sub<&'b PublicKey> for PublicKey {
-    type Output = PublicKey;
+    type Output = Self;
 
-    fn sub(self, other: &'b PublicKey) -> Self::Output {
+    fn sub(self, other: &'b Self) -> Self::Output {
         let point = self.point() - other.point();
-        PublicKey {
+        Self {
             point: point.compress(),
         }
     }
 }
 
 impl Sub<PublicKey> for PublicKey {
-    type Output = PublicKey;
+    type Output = Self;
 
-    fn sub(self, other: PublicKey) -> Self::Output {
+    fn sub(self, other: Self) -> Self::Output {
         let point = self.point() - other.point();
-        PublicKey {
+        Self {
             point: point.compress(),
         }
     }
 }
 
 impl<'b> Mul<&'b PrivateKey> for PublicKey {
-    type Output = PublicKey;
+    type Output = Self;
 
     fn mul(self, other: &'b PrivateKey) -> Self::Output {
         let point = self.point() * other.scalar;
-        PublicKey {
+        Self {
             point: point.compress(),
         }
     }
@@ -460,9 +455,9 @@ impl ops::Index<ops::RangeFull> for PublicKey {
 }
 
 impl<D: Decoder> Decodable<D> for PublicKey {
-    fn consensus_decode(d: &mut D) -> Result<PublicKey, encode::Error> {
+    fn consensus_decode(d: &mut D) -> Result<Self, encode::Error> {
         let bytes: [u8; 32] = Decodable::consensus_decode(d)?;
-        Ok(PublicKey::from_slice(&bytes)?)
+        Ok(Self::from_slice(&bytes)?)
     }
 }
 
@@ -487,7 +482,7 @@ pub struct KeyPair {
     pub spend: PrivateKey,
 }
 
-/// View pair can scan transaction outputs and retreive amounts, but can't spend outputs
+/// View pair can scan transaction outputs and retrieve amounts, but can't spend outputs
 #[derive(Debug)]
 pub struct ViewPair {
     /// The private view key
@@ -497,9 +492,9 @@ pub struct ViewPair {
 }
 
 impl From<KeyPair> for ViewPair {
-    fn from(k: KeyPair) -> ViewPair {
+    fn from(k: KeyPair) -> Self {
         let spend = PublicKey::from_private_key(&k.spend);
-        ViewPair {
+        Self {
             view: k.view,
             spend,
         }
@@ -507,9 +502,9 @@ impl From<KeyPair> for ViewPair {
 }
 
 impl From<&KeyPair> for ViewPair {
-    fn from(k: &KeyPair) -> ViewPair {
+    fn from(k: &KeyPair) -> Self {
         let spend = PublicKey::from_private_key(&k.spend);
-        ViewPair {
+        Self {
             view: k.view,
             spend,
         }
@@ -518,9 +513,8 @@ impl From<&KeyPair> for ViewPair {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
     use super::{PrivateKey, PublicKey};
+    use std::str::FromStr;
 
     #[test]
     fn public_key_from_secret() {
@@ -536,11 +530,10 @@ mod tests {
 
     #[test]
     fn parse_public_key() {
-        assert!(
-            true,
-            PublicKey::from_str("eac2cc96e0ae684388e3185d5277e51313bff98b9ad4a12dcd9205f20d37f1a3")
-                .is_ok()
-        );
+        assert!(PublicKey::from_str(
+            "eac2cc96e0ae684388e3185d5277e51313bff98b9ad4a12dcd9205f20d37f1a3"
+        )
+        .is_ok());
     }
 
     #[test]

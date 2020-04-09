@@ -46,17 +46,16 @@
 //! ```
 //!
 
-use std::str::FromStr;
-use std::{error, fmt};
-
+use crate::{
+    network::{self, Network},
+    util::key::{KeyPair, PublicKey, ViewPair},
+};
 use base58_monero::base58;
 use keccak_hash::keccak_256;
-
-use crate::network::{self, Network};
-use crate::util::key::{KeyPair, PublicKey, ViewPair};
+use std::{error, fmt, str::FromStr};
 
 /// Possible errors when manipulating addresses
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub enum Error {
     /// Invalid address magic byte
     InvalidMagicByte,
@@ -74,52 +73,45 @@ pub enum Error {
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            Error::Base58(ref e) => fmt::Display::fmt(e, f),
-            Error::Network(ref e) => fmt::Display::fmt(e, f),
-            Error::InvalidMagicByte
-            | Error::InvalidPaymentId
-            | Error::InvalidChecksum
-            | Error::InvalidFormat => f.write_str(error::Error::description(self)),
-        }
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Base58(e) => return fmt::Display::fmt(e, f),
+                Self::Network(e) => return fmt::Display::fmt(e, f),
+                Self::InvalidMagicByte => "invalid magic byte",
+                Self::InvalidPaymentId => "invalid payment id",
+                Self::InvalidChecksum => "checksums missmatch",
+                Self::InvalidFormat => "invalid format",
+            }
+        )
     }
 }
 
 impl error::Error for Error {
-    fn cause(&self) -> Option<&dyn error::Error> {
-        match *self {
-            Error::Base58(ref e) => Some(e),
-            Error::Network(ref e) => Some(e),
-            Error::InvalidMagicByte
-            | Error::InvalidPaymentId
-            | Error::InvalidChecksum
-            | Error::InvalidFormat => None,
-        }
-    }
-
-    fn description(&self) -> &str {
-        match *self {
-            Error::Base58(ref e) => e.description(),
-            Error::Network(ref e) => e.description(),
-            Error::InvalidMagicByte => "invalid magic byte",
-            Error::InvalidPaymentId => "invalid payment id",
-            Error::InvalidChecksum => "checksums missmatch",
-            Error::InvalidFormat => "invalid format",
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            Self::Base58(e) => Some(e),
+            Self::Network(e) => Some(e),
+            Self::InvalidMagicByte
+            | Self::InvalidPaymentId
+            | Self::InvalidChecksum
+            | Self::InvalidFormat => None,
         }
     }
 }
 
 #[doc(hidden)]
 impl From<base58::Error> for Error {
-    fn from(e: base58::Error) -> Error {
-        Error::Base58(e)
+    fn from(e: base58::Error) -> Self {
+        Self::Base58(e)
     }
 }
 
 #[doc(hidden)]
 impl From<network::Error> for Error {
-    fn from(e: network::Error) -> Error {
-        Error::Network(e)
+    fn from(e: network::Error) -> Self {
+        Self::Network(e)
     }
 }
 
@@ -136,36 +128,34 @@ pub enum AddressType {
 
 impl AddressType {
     /// Recover the address type given an address bytes and the network
-    pub fn from_slice(bytes: &[u8], net: Network) -> Result<AddressType, Error> {
+    pub fn from_slice(bytes: &[u8], net: Network) -> Result<Self, Error> {
         let byte = bytes[0];
-        use AddressType::*;
-        use Network::*;
         match net {
-            Mainnet => match byte {
-                18 => Ok(Standard),
+            Network::Mainnet => match byte {
+                18 => Ok(Self::Standard),
                 19 => {
                     let payment_id = PaymentId::from_slice(&bytes[65..73]);
-                    Ok(Integrated(payment_id))
+                    Ok(Self::Integrated(payment_id))
                 }
-                42 => Ok(SubAddress),
+                42 => Ok(Self::SubAddress),
                 _ => Err(Error::InvalidMagicByte),
             },
-            Testnet => match byte {
-                53 => Ok(Standard),
+            Network::Testnet => match byte {
+                53 => Ok(Self::Standard),
                 54 => {
                     let payment_id = PaymentId::from_slice(&bytes[65..73]);
-                    Ok(Integrated(payment_id))
+                    Ok(Self::Integrated(payment_id))
                 }
-                63 => Ok(SubAddress),
+                63 => Ok(Self::SubAddress),
                 _ => Err(Error::InvalidMagicByte),
             },
-            Stagenet => match byte {
-                24 => Ok(Standard),
+            Network::Stagenet => match byte {
+                24 => Ok(Self::Standard),
                 25 => {
                     let payment_id = PaymentId::from_slice(&bytes[65..73]);
-                    Ok(Integrated(payment_id))
+                    Ok(Self::Integrated(payment_id))
                 }
-                36 => Ok(SubAddress),
+                36 => Ok(Self::SubAddress),
                 _ => Err(Error::InvalidMagicByte),
             },
         }
@@ -173,17 +163,17 @@ impl AddressType {
 }
 
 impl Default for AddressType {
-    fn default() -> AddressType {
-        AddressType::Standard
+    fn default() -> Self {
+        Self::Standard
     }
 }
 
 impl fmt::Display for AddressType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            AddressType::Standard => write!(f, "Standard address"),
-            AddressType::Integrated(_) => write!(f, "Integrated address"),
-            AddressType::SubAddress => write!(f, "Subaddress"),
+        match self {
+            Self::Standard => write!(f, "Standard address"),
+            Self::Integrated(_) => write!(f, "Integrated address"),
+            Self::SubAddress => write!(f, "Subaddress"),
         }
     }
 }
@@ -208,8 +198,13 @@ pub struct Address {
 
 impl Address {
     /// Create a standard address which is valid on the given network
-    pub fn standard(network: Network, public_spend: PublicKey, public_view: PublicKey) -> Address {
-        Address {
+    #[must_use]
+    pub const fn standard(
+        network: Network,
+        public_spend: PublicKey,
+        public_view: PublicKey,
+    ) -> Self {
+        Self {
             network,
             addr_type: AddressType::Standard,
             public_spend,
@@ -218,12 +213,13 @@ impl Address {
     }
 
     /// Create a sub-address which is valid on the given network
-    pub fn subaddress(
+    #[must_use]
+    pub const fn subaddress(
         network: Network,
         public_spend: PublicKey,
         public_view: PublicKey,
-    ) -> Address {
-        Address {
+    ) -> Self {
+        Self {
             network,
             addr_type: AddressType::SubAddress,
             public_spend,
@@ -232,13 +228,14 @@ impl Address {
     }
 
     /// Create an address with an integrated payment id which is valid on the given network
+    #[must_use]
     pub fn integrated(
         network: Network,
         public_spend: PublicKey,
         public_view: PublicKey,
         payment_id: PaymentId,
-    ) -> Address {
-        Address {
+    ) -> Self {
+        Self {
             network,
             addr_type: AddressType::Integrated(payment_id),
             public_spend,
@@ -247,9 +244,10 @@ impl Address {
     }
 
     /// Create a standard address from a view pair which is valid on the given network
-    pub fn from_viewpair(network: Network, keys: &ViewPair) -> Address {
+    #[must_use]
+    pub fn from_viewpair(network: Network, keys: &ViewPair) -> Self {
         let public_view = PublicKey::from_private_key(&keys.view);
-        Address {
+        Self {
             network,
             addr_type: AddressType::Standard,
             public_spend: keys.spend,
@@ -258,10 +256,11 @@ impl Address {
     }
 
     /// Create a standard address from a key pair which is valid on the given network
-    pub fn from_keypair(network: Network, keys: &KeyPair) -> Address {
+    #[must_use]
+    pub fn from_keypair(network: Network, keys: &KeyPair) -> Self {
         let public_spend = PublicKey::from_private_key(&keys.spend);
         let public_view = PublicKey::from_private_key(&keys.view);
-        Address {
+        Self {
             network,
             addr_type: AddressType::Standard,
             public_spend,
@@ -271,15 +270,15 @@ impl Address {
 
     /// Parse an address from a vector of bytes, fail if the magic byte is incorrect, if public
     /// keys are not valid points, if payment id is invalid, and if checksums missmatch
-    pub fn from_bytes(bytes: &[u8]) -> Result<Address, Error> {
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
         let network = Network::from_u8(bytes[0])?;
-        let addr_type = AddressType::from_slice(&bytes, network)?;
+        let addr_type = AddressType::from_slice(bytes, network)?;
         let public_spend =
             PublicKey::from_slice(&bytes[1..33]).map_err(|_| Error::InvalidFormat)?;
         let public_view =
             PublicKey::from_slice(&bytes[33..65]).map_err(|_| Error::InvalidFormat)?;
 
-        let mut verify_checksum = [0u8; 32];
+        let mut verify_checksum = [0_u8; 32];
         let (checksum_bytes, checksum) = match addr_type {
             AddressType::Standard | AddressType::SubAddress => (&bytes[0..65], &bytes[65..69]),
             AddressType::Integrated(_) => (&bytes[0..73], &bytes[73..77]),
@@ -289,7 +288,7 @@ impl Address {
             return Err(Error::InvalidChecksum);
         }
 
-        Ok(Address {
+        Ok(Self {
             network,
             addr_type,
             public_spend,
@@ -298,6 +297,7 @@ impl Address {
     }
 
     /// Serialize the address as a vector of bytes
+    #[must_use]
     pub fn as_bytes(&self) -> Vec<u8> {
         let mut bytes = vec![self.network.as_u8(&self.addr_type)];
         bytes.extend_from_slice(self.public_spend.as_bytes());
@@ -306,13 +306,14 @@ impl Address {
             bytes.extend_from_slice(&payment_id.0);
         }
 
-        let mut checksum = [0u8; 32];
+        let mut checksum = [0_u8; 32];
         keccak_256(bytes.as_slice(), &mut checksum);
         bytes.extend_from_slice(&checksum[0..4]);
         bytes
     }
 
     /// Serialize the address as an hexadecimal string
+    #[must_use]
     pub fn as_hex(&self) -> String {
         hex::encode(self.as_bytes())
     }

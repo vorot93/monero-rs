@@ -22,9 +22,8 @@ pub mod address;
 pub mod key;
 pub mod ringct;
 
-use std::{error, fmt};
-
 use super::network;
+use std::{error, fmt};
 
 /// A general error code, other errors should implement conversions to/from this
 /// if appropriate.
@@ -40,49 +39,41 @@ pub enum Error {
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            Error::Network(ref e) => fmt::Display::fmt(e, f),
-            Error::Address(ref e) => fmt::Display::fmt(e, f),
-            Error::Key(ref e) => fmt::Display::fmt(e, f),
+        match self {
+            Self::Network(e) => fmt::Display::fmt(e, f),
+            Self::Address(e) => fmt::Display::fmt(e, f),
+            Self::Key(e) => fmt::Display::fmt(e, f),
         }
     }
 }
 
 impl error::Error for Error {
     fn cause(&self) -> Option<&dyn error::Error> {
-        match *self {
-            Error::Network(ref e) => Some(e),
-            Error::Address(ref e) => Some(e),
-            Error::Key(ref e) => Some(e),
-        }
-    }
-
-    fn description(&self) -> &str {
-        match *self {
-            Error::Network(ref e) => e.description(),
-            Error::Address(ref e) => e.description(),
-            Error::Key(ref e) => e.description(),
+        match self {
+            Self::Network(e) => Some(e),
+            Self::Address(e) => Some(e),
+            Self::Key(e) => Some(e),
         }
     }
 }
 
 #[doc(hidden)]
 impl From<network::Error> for Error {
-    fn from(e: network::Error) -> Error {
-        Error::Network(e)
+    fn from(e: network::Error) -> Self {
+        Self::Network(e)
     }
 }
 
 #[doc(hidden)]
 impl From<address::Error> for Error {
-    fn from(e: address::Error) -> Error {
-        Error::Address(e)
+    fn from(e: address::Error) -> Self {
+        Self::Address(e)
     }
 }
 
 #[doc(hidden)]
 impl From<key::Error> for Error {
-    fn from(e: key::Error) -> Error {
-        Error::Key(e)
+    fn from(e: key::Error) -> Self {
+        Self::Key(e)
     }
 }

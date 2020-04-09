@@ -18,14 +18,15 @@
 //! Support for parsing RingCT signature in Monero transactions.
 //!
 
-use std::fmt;
-
-use crate::consensus::encode::{self, serialize, Decodable, Decoder, Encodable, Encoder, VarInt};
-use crate::cryptonote::hash;
+use crate::{
+    consensus::encode::{self, serialize, Decodable, Decoder, Encodable, Encoder, VarInt},
+    cryptonote::hash,
+};
 #[cfg(feature = "serde_support")]
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "serde_support")]
 use serde_big_array_unchecked_docs::*;
+use std::{convert::TryFrom, fmt};
 
 ///Serde support for array's bigger than 32
 #[allow(missing_docs)]
@@ -131,18 +132,15 @@ pub enum EcdhInfo {
 
 impl EcdhInfo {
     /// Decode Diffie-Hellman info given the RingCT type
-    fn consensus_decode<D: Decoder>(
-        d: &mut D,
-        rct_type: RctType,
-    ) -> Result<EcdhInfo, encode::Error> {
+    fn consensus_decode<D: Decoder>(d: &mut D, rct_type: RctType) -> Result<Self, encode::Error> {
         match rct_type {
             RctType::Full | RctType::Simple | RctType::Bulletproof | RctType::Null => {
-                Ok(EcdhInfo::Standard {
+                Ok(Self::Standard {
                     mask: Decodable::consensus_decode(d)?,
                     amount: Decodable::consensus_decode(d)?,
                 })
             }
-            RctType::Bulletproof2 => Ok(EcdhInfo::Bulletproof2 {
+            RctType::Bulletproof2 => Ok(Self::Bulletproof2 {
                 amount: Decodable::consensus_decode(d)?,
             }),
         }
@@ -152,11 +150,11 @@ impl EcdhInfo {
 impl<S: Encoder> Encodable<S> for EcdhInfo {
     fn consensus_encode(&self, s: &mut S) -> Result<(), encode::Error> {
         match self {
-            EcdhInfo::Standard { mask, amount } => {
+            Self::Standard { mask, amount } => {
                 mask.consensus_encode(s)?;
                 amount.consensus_encode(s)?;
             }
-            EcdhInfo::Bulletproof2 { amount } => {
+            Self::Bulletproof2 { amount } => {
                 amount.consensus_encode(s)?;
             }
         }
@@ -192,7 +190,7 @@ pub struct MgSig {
 
 impl<S: Encoder> Encodable<S> for MgSig {
     fn consensus_encode(&self, s: &mut S) -> Result<(), encode::Error> {
-        for ss in self.ss.iter() {
+        for ss in &self.ss {
             encode_sized_vec!(ss, s);
         }
         self.cc.consensus_encode(s)
@@ -270,7 +268,7 @@ impl RctSigBase {
         d: &mut D,
         inputs: usize,
         outputs: usize,
-    ) -> Result<Option<RctSigBase>, encode::Error> {
+    ) -> Result<Option<Self>, encode::Error> {
         let rct_type: RctType = Decodable::consensus_decode(d)?;
         match rct_type {
             RctType::Null => Ok(None),
@@ -289,7 +287,7 @@ impl RctSigBase {
                 }
                 // OutPk
                 let out_pk: Vec<CtKey> = decode_sized_vec!(outputs, d);
-                Ok(Some(RctSigBase {
+                Ok(Some(Self {
                     rct_type,
                     txn_fee,
                     pseudo_outs,
@@ -344,23 +342,24 @@ pub enum RctType {
 
 impl RctType {
     /// Return if the format use one of the bulletproof format
+    #[must_use]
     pub fn is_rct_bp(self) -> bool {
         match self {
-            RctType::Bulletproof | RctType::Bulletproof2 => true,
+            Self::Bulletproof | Self::Bulletproof2 => true,
             _ => false,
         }
     }
 }
 
 impl<D: Decoder> Decodable<D> for RctType {
-    fn consensus_decode(d: &mut D) -> Result<RctType, encode::Error> {
+    fn consensus_decode(d: &mut D) -> Result<Self, encode::Error> {
         let rct_type: u8 = Decodable::consensus_decode(d)?;
         match rct_type {
-            0 => Ok(RctType::Null),
-            1 => Ok(RctType::Full),
-            2 => Ok(RctType::Simple),
-            3 => Ok(RctType::Bulletproof),
-            4 => Ok(RctType::Bulletproof2),
+            0 => Ok(Self::Null),
+            1 => Ok(Self::Full),
+            2 => Ok(Self::Simple),
+            3 => Ok(Self::Bulletproof),
+            4 => Ok(Self::Bulletproof2),
             _ => Err(Error::UnknownRctType.into()),
         }
     }
@@ -369,11 +368,11 @@ impl<D: Decoder> Decodable<D> for RctType {
 impl<S: Encoder> Encodable<S> for RctType {
     fn consensus_encode(&self, s: &mut S) -> Result<(), encode::Error> {
         match self {
-            RctType::Null => 0u8.consensus_encode(s)?,
-            RctType::Full => 1u8.consensus_encode(s)?,
-            RctType::Simple => 2u8.consensus_encode(s)?,
-            RctType::Bulletproof => 3u8.consensus_encode(s)?,
-            RctType::Bulletproof2 => 4u8.consensus_encode(s)?,
+            Self::Null => 0_u8.consensus_encode(s)?,
+            Self::Full => 1_u8.consensus_encode(s)?,
+            Self::Simple => 2_u8.consensus_encode(s)?,
+            Self::Bulletproof => 3_u8.consensus_encode(s)?,
+            Self::Bulletproof2 => 4_u8.consensus_encode(s)?,
         }
         Ok(())
     }
@@ -405,21 +404,18 @@ impl RctSigPrunable {
         inputs: usize,
         outputs: usize,
         mixin: usize,
-    ) -> Result<Option<RctSigPrunable>, encode::Error> {
+    ) -> Result<Option<Self>, encode::Error> {
         match rct_type {
             RctType::Null => Ok(None),
             RctType::Full | RctType::Simple | RctType::Bulletproof | RctType::Bulletproof2 => {
                 let mut bulletproofs: Vec<Bulletproof> = vec![];
                 let mut range_sigs: Vec<RangeSig> = vec![];
                 if rct_type.is_rct_bp() {
-                    match rct_type {
-                        RctType::Bulletproof2 => {
-                            bulletproofs = Decodable::consensus_decode(d)?;
-                        }
-                        _ => {
-                            let size: u32 = Decodable::consensus_decode(d)?;
-                            bulletproofs = decode_sized_vec!(size, d);
-                        }
+                    if let RctType::Bulletproof2 = rct_type {
+                        bulletproofs = Decodable::consensus_decode(d)?;
+                    } else {
+                        let size: u32 = Decodable::consensus_decode(d)?;
+                        bulletproofs = decode_sized_vec!(size, d);
                     };
                 } else {
                     range_sigs = decode_sized_vec!(outputs, d);
@@ -446,7 +442,7 @@ impl RctSigPrunable {
                     }
                     _ => (),
                 }
-                Ok(Some(RctSigPrunable {
+                Ok(Some(Self {
                     range_sigs,
                     bulletproofs,
                     MGs,
@@ -466,15 +462,13 @@ impl RctSigPrunable {
             RctType::Null => Ok(()),
             RctType::Full | RctType::Simple | RctType::Bulletproof | RctType::Bulletproof2 => {
                 if rct_type.is_rct_bp() {
-                    match rct_type {
-                        RctType::Bulletproof2 => {
-                            self.bulletproofs.consensus_encode(s)?;
-                        }
-                        _ => {
-                            let size: u32 = self.bulletproofs.len() as u32;
-                            size.consensus_encode(s)?;
-                            encode_sized_vec!(self.bulletproofs, s);
-                        }
+                    if let RctType::Bulletproof2 = rct_type {
+                        self.bulletproofs.consensus_encode(s)?;
+                    } else {
+                        let size: u32 =
+                            u32::try_from(self.bulletproofs.len()).unwrap_or(u32::max_value());
+                        size.consensus_encode(s)?;
+                        encode_sized_vec!(self.bulletproofs, s);
                     }
                 } else {
                     encode_sized_vec!(self.range_sigs, s);

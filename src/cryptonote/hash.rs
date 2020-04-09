@@ -18,11 +18,12 @@
 //! Support for (de)serializable hashes (Keccak 256) and `Hn` (hash to number, or hash to scalar).
 //!
 
+use crate::{
+    consensus::encode::{self, Decodable, Decoder, Encodable, Encoder},
+    util::key::PrivateKey,
+};
 use curve25519_dalek::scalar::Scalar;
 use keccak_hash::keccak_256;
-
-use crate::consensus::encode::{self, Decodable, Decoder, Encodable, Encoder};
-use crate::util::key::PrivateKey;
 #[cfg(feature = "serde_support")]
 use serde::{Deserialize, Serialize};
 
@@ -34,23 +35,27 @@ fixed_hash::construct_fixed_hash!(
 
 impl Hash {
     /// Create a null hash with all zeros
-    pub fn null_hash() -> Hash {
-        Hash([0u8; 32])
+    #[must_use]
+    pub const fn null_hash() -> Self {
+        Self([0_u8; 32])
     }
 
     /// Hash a stream of bytes with Keccak 256
-    pub fn hash(input: &[u8]) -> Hash {
-        let mut out = [0u8; 32];
+    #[must_use]
+    pub fn hash(input: &[u8]) -> Self {
+        let mut out = [0_u8; 32];
         keccak_256(input, &mut out);
-        Hash(out)
+        Self(out)
     }
 
     /// Return the hash value
-    pub fn to_bytes(&self) -> [u8; 32] {
+    #[must_use]
+    pub const fn to_bytes(&self) -> [u8; 32] {
         self.0
     }
 
     /// Return the scalar of the hash as a little endian number modulo l (curve order)
+    #[must_use]
     pub fn as_scalar(&self) -> PrivateKey {
         PrivateKey::from_scalar(Scalar::from_bytes_mod_order(self.0))
     }
@@ -60,14 +65,15 @@ impl Hash {
     /// The hash function H is the same Keccak function that is used in CryptoNote. When the
     /// value of the hash function is interpreted as a scalar, it is converted into a
     /// little-endian integer and taken modulo l.
+    #[must_use]
     pub fn hash_to_scalar(input: &[u8]) -> PrivateKey {
         Self::hash(input).as_scalar()
     }
 }
 
 impl<D: Decoder> Decodable<D> for Hash {
-    fn consensus_decode(d: &mut D) -> Result<Hash, encode::Error> {
-        Ok(Hash(Decodable::consensus_decode(d)?))
+    fn consensus_decode(d: &mut D) -> Result<Self, encode::Error> {
+        Ok(Self(Decodable::consensus_decode(d)?))
     }
 }
 
@@ -95,8 +101,8 @@ fixed_hash::construct_fixed_hash!(
 );
 
 impl<D: Decoder> Decodable<D> for Hash8 {
-    fn consensus_decode(d: &mut D) -> Result<Hash8, encode::Error> {
-        Ok(Hash8(Decodable::consensus_decode(d)?))
+    fn consensus_decode(d: &mut D) -> Result<Self, encode::Error> {
+        Ok(Self(Decodable::consensus_decode(d)?))
     }
 }
 

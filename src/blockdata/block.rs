@@ -18,9 +18,7 @@
 //! This module defines structures of blocks.
 //!
 
-use crate::blockdata::transaction::Transaction;
-use crate::consensus::encode::VarInt;
-use crate::cryptonote::hash;
+use crate::{blockdata::transaction::Transaction, consensus::encode::VarInt, cryptonote::hash};
 #[cfg(feature = "serde_support")]
 use serde::{Deserialize, Serialize};
 

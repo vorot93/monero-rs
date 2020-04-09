@@ -20,14 +20,16 @@
 //! index, representing a particular subaddress within that account.
 //!
 
-use std::fmt;
-use std::io::Cursor;
-
-use crate::consensus::encode::Encodable;
-use crate::cryptonote::hash;
-use crate::network::Network;
-use crate::util::address::Address;
-use crate::util::key::{KeyPair, PrivateKey, PublicKey, ViewPair};
+use crate::{
+    consensus::encode::Encodable,
+    cryptonote::hash,
+    network::Network,
+    util::{
+        address::Address,
+        key::{KeyPair, PrivateKey, PublicKey, ViewPair},
+    },
+};
+use std::{fmt, io::Cursor};
 
 /// A subaddress index with `major` and `minor` indexes
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -41,6 +43,7 @@ pub struct Index {
 impl Index {
     /// Return `true` if major and minor indexes are both equal to 0, the zero case is a special
     /// case
+    #[must_use]
     pub fn is_zero(self) -> bool {
         self.major == 0 && self.minor == 0
     }
@@ -53,13 +56,14 @@ impl fmt::Display for Index {
 }
 
 impl Default for Index {
-    fn default() -> Index {
-        Index { major: 0, minor: 0 }
+    fn default() -> Self {
+        Self { major: 0, minor: 0 }
     }
 }
 
 /// Compute the scalar `m = Hn("SubAddr" || v || major_index || minor_index)` at index `i` from
 /// the view secret key `v`
+#[must_use]
 pub fn get_secret_scalar(view: &PrivateKey, index: Index) -> PrivateKey {
     // x = a || account_index || minor_index
     let mut encoder = Cursor::new(vec![]);
@@ -75,6 +79,7 @@ pub fn get_secret_scalar(view: &PrivateKey, index: Index) -> PrivateKey {
 
 /// Compute the private spend key `s' = s + m` where `m` is computed with `get_secret_scalar` based
 /// on `v`
+#[must_use]
 pub fn get_spend_secret_key(keys: &KeyPair, index: Index) -> PrivateKey {
     // If index is equal to 0, then return s as s'
     if index.is_zero() {
@@ -85,6 +90,7 @@ pub fn get_spend_secret_key(keys: &KeyPair, index: Index) -> PrivateKey {
 }
 
 /// Compute the private view key `v' = v * s'` where `s'` is computed with `get_spend_secret_key`
+#[must_use]
 pub fn get_view_secret_key(keys: &KeyPair, index: Index) -> PrivateKey {
     // If index is equal to 0, then return v as v'
     if index.is_zero() {
@@ -95,6 +101,7 @@ pub fn get_view_secret_key(keys: &KeyPair, index: Index) -> PrivateKey {
 }
 
 /// Compute a subkey pair `(v', s')` from a root keypair `(v, s)` for index `i`
+#[must_use]
 pub fn get_secret_keys(keys: &KeyPair, index: Index) -> KeyPair {
     let view = get_view_secret_key(keys, index);
     let spend = get_spend_secret_key(keys, index);
@@ -104,6 +111,7 @@ pub fn get_secret_keys(keys: &KeyPair, index: Index) -> KeyPair {
 /// Compute the spend public key `S' = mG + S` at index `i` from the view pair `(v, S)`
 ///
 /// If index is equal to zero return `S` as `S'`
+#[must_use]
 pub fn get_spend_public_key(keys: &ViewPair, index: Index) -> PublicKey {
     // If index is equal to 0, then return S as S'
     if index.is_zero() {
@@ -120,6 +128,7 @@ pub fn get_spend_public_key(keys: &ViewPair, index: Index) -> PublicKey {
 /// where `V' = v*S'` and `S' = mG + S`
 ///
 /// If index is equal to zero return `(v, S)` as `(V', S')`
+#[must_use]
 pub fn get_public_keys(keys: &ViewPair, index: Index) -> (PublicKey, PublicKey) {
     // If index is equal to 0, then return (V, S) as (V', S')
     if index.is_zero() {
@@ -147,8 +156,10 @@ mod tests {
     use std::str::FromStr;
 
     use super::{get_public_keys, get_subaddress, Index};
-    use crate::network::Network;
-    use crate::util::key::{PrivateKey, PublicKey, ViewPair};
+    use crate::{
+        network::Network,
+        util::key::{PrivateKey, PublicKey, ViewPair},
+    };
 
     #[test]
     #[allow(non_snake_case)]

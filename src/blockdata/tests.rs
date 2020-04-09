@@ -15,9 +15,11 @@
 
 #![allow(unused_imports)]
 
-use crate::blockdata::transaction::{ExtraField, Transaction};
-use crate::consensus::encode::{deserialize, deserialize_partial, serialize};
-use crate::cryptonote::hash::Hashable;
+use crate::{
+    blockdata::transaction::{ExtraField, Transaction},
+    consensus::encode::{deserialize, deserialize_partial, serialize},
+    cryptonote::hash::Hashable,
+};
 
 #[test]
 fn deserialize_transaction() {
